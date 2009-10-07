@@ -71,7 +71,6 @@ label and its curly braces get half-indentation."
                                 (c-guess-basic-syntax)))
              (syntactic-symbol (caar context-element))
              (context-anchor (cdar context-element)))
-        (message "mozilla-lineup-case-block: sym: %S" syntactic-symbol)
         (if (eq syntactic-symbol 'statement-case-open)
             '*
           '+)))))
