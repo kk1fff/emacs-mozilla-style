@@ -29,8 +29,10 @@
     (c-offsets-alist . ((case-label . *)
                         (statement-case-intro . *)
                         (statement-case-open . 0)
-                        (statement-block-intro
-                         . mozilla-lineup-case-block-intro)))))
+                        (statement-block-intro mozilla-lineup-case-block-intro
+                                               +)
+                        (statement-cont mozilla-lineup-return-cont
+                                        +)))))
 
 (c-add-style "Mozilla" mozilla-c-style)
 
@@ -72,8 +74,21 @@ label and its curly braces get half-indentation."
              (syntactic-symbol (caar context-element))
              (context-anchor (cdar context-element)))
         (if (eq syntactic-symbol 'statement-case-open)
-            '*
-          '+)))))
+            '*)))))                     ; half a c-basic-offset
+
+(defun mozilla-lineup-return-cont (element)
+  "Indent a continuation of a 'return' statement.
+In mozilla style, return statements whose expressions are more than one line
+long should be indented like this:
+
+    return expression begins here
+           and continues here;
+"
+  (let ((anchor (cdr element)))
+    (save-excursion
+      (goto-char anchor)
+      (if (looking-at "\\_<return\\_>")
+          7))))
 
 (defun mozilla-source ()
   "Return true if the current buffer holds Mozilla source code.
