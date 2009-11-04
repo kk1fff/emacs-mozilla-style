@@ -98,18 +98,33 @@
 
 (defun mq-find-hg-root ()
   "Return the root of the Mercurial tree containing the currently visited file.
-This is the directory containing the `.hg' subdirectory."
-  (let ((dir (expand-file-name default-directory)))
+This is the directory containing the `.hg' subdirectory.
+
+Note that it can be useful for the ROOT/.hg/patches directory
+itself to be a Mercurial root, with its own metadata in
+ROOT/.hg/patches/.hg. Calling this function in such a directory
+should arguably return ROOT/.hg/patches.
+
+However, it doesn't seem very useful to have queues of patches to
+patches (\"metaqueues\"!), and it does seem useful for the global
+series commands --- mq-visit-series, etc. --- to operate using
+ROOT when invoked in ROOT/.hg/patches, regardless of whether that
+directory is itself a root.  So we do that."
+  (let ((dir default-directory))
     (unless dir
       (error "Selected buffer has no default directory"))
-    (while (not (file-directory-p (expand-file-name ".hg" dir)))
-      (let ((parent (file-name-directory (directory-file-name dir))))
-        ;; We've reached the root when the above hands us back the
-        ;; same thing we gave it.
-        (when (string-equal dir parent)
-          (error "directory not managed by mercurial: %s" default-directory))
-        (setq dir parent)))
-    dir))
+    ;; If dir is ROOT/.hg/patches, return ROOT regardless of whether
+    ;; the patches directory is itself an hg repo.
+    (if (string-match "\\`\\(.*/\\).hg/patches/\\'" dir)
+        (match-string 1 dir)
+      (while (not (file-directory-p (expand-file-name ".hg" dir)))
+        (let ((parent (file-name-directory (directory-file-name dir))))
+          ;; We've reached the root when the above hands us back the
+          ;; same thing we gave it.
+          (when (string-equal dir parent)
+            (error "directory not managed by mercurial: %s" default-directory))
+          (setq dir parent)))
+      dir)))
 
 (defun mq-find-patch-directory (root)
   "Return the patch directory for the Mercurial root directory ROOT."
@@ -132,7 +147,7 @@ This is the directory containing the `.hg' subdirectory."
 
 (defun mq-read-status (filename)
   "Parse the contents of the MQ status file.
-The return value is a list of the applied patches, from earliest to last"
+The return value is a list of the applied patches, from last to earliest."
   (if (file-exists-p filename)
       (with-temp-buffer
         (insert-file-contents filename)
@@ -143,7 +158,7 @@ The return value is a list of the applied patches, from earliest to last"
               (error "unrecognized line in MQ status file"))
             (push (match-string 1) patches)
             (forward-line 1))
-          (nreverse patches)))
+          patches))
     nil))
 
 (defun mq-read-guards (filename)
@@ -347,7 +362,7 @@ Here is a complete list of the bindings available in Queue Mode:
   (setq major-mode 'mq-queue-mode)
   (setq mode-name "Queue")
   (use-local-map mq-queue-mode-map)
-  (if (string-match "^\\(.*/\\).hg/patches/series" buffer-file-name)
+  (if (string-match "\\`\\(.*/\\).hg/patches/series" buffer-file-name)
       (setq default-directory (match-string 1 buffer-file-name)))
   
   (set (make-local-variable 'mq-status-filename)
@@ -371,10 +386,9 @@ Here is a complete list of the bindings available in Queue Mode:
     (define-key map "\C-c4\C-f" 'mq-find-patch-other-window)
     map))
 
-(defun mq-refresh-buffers ()
-  "Revert all unmodified buffers visiting changed files in the current tree."
-  (let* ((root (mq-find-hg-root))
-         (root-regexp (concat "^" (regexp-quote root))))
+(defun mq-refresh-buffers (root)
+  "Revert all unmodified buffers visiting changed files in ROOT."
+  (let ((root-regexp (concat "\\`" (regexp-quote root))))
     (loop for buffer in (buffer-list)
           do (save-excursion
                (set-buffer buffer)
@@ -383,7 +397,6 @@ Here is a complete list of the bindings available in Queue Mode:
                         (string-match root-regexp buffer-file-name)
                         (file-exists-p buffer-file-name)
                         (not (verify-visited-file-modtime (current-buffer))))
-                   
                    (revert-buffer t t))))))
 
 (defun mq-refresh ()
@@ -396,8 +409,8 @@ current mercurial tree, if the visited file seems to have changed."
     (if buffer
         (save-excursion
           (set-buffer buffer)
-          (mq-refresh-status-and-guards))))
-  (mq-refresh-buffers))
+          (mq-refresh-status-and-guards)))
+    (mq-refresh-buffers root)))
 
 (defun mq-go-to-patch ()
   "Push or pop the queue to get to the patch on the current line."
@@ -429,6 +442,18 @@ current mercurial tree, if the visited file seems to have changed."
          (line (mq-read-series-line))
          (patch (car line)))
     (find-file-other-window (expand-file-name patch patch-directory))))
+
+(defun mq-point-to-top-patch ()
+  "Move point to the series buffer line for the top applied patch."
+  (goto-char (point-min))
+  (when mq-status
+    (let ((patch (car mq-status)))
+      (unless (re-search-forward (format "^\\s-*%s\\([#[:blank:]]\\|\\'\\)"
+                                         (regexp-quote patch))
+                                 nil t)
+        (error "Couldn't find line in series file for top patch: %s"
+               patch))
+      (beginning-of-line))))
 
 
 ;;; Global commands, available in all files.
@@ -479,14 +504,16 @@ local changes."
   (interactive)
   (let* ((root (mq-find-hg-root))
          (series (mq-find-series-file root)))
-    (find-file series)))
+    (find-file series)
+    (mq-point-to-top-patch)))
 
 (defun mq-visit-series-other-window ()
   "Visit the current buffer's series file in another window."
   (interactive)
   (let* ((root (mq-find-hg-root))
          (series (mq-find-series-file root)))
-    (find-file-other-window series)))
+    (find-file-other-window series)
+    (mq-point-to-top-patch)))
 
 
 ;;; Global key bindings.
