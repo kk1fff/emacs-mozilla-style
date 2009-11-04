@@ -76,6 +76,13 @@
 ;; for its commands. This is normally bound to `kbd-macro-query', but
 ;; that command is also available as `C-x C-k q', under the common
 ;; `C-x C-k' prefix for all macro-related commands.
+;;
+;; Ideas
+;; =====
+;;
+;; When pushing a patch produces a conflict, it would be nice to
+;; gather up the .rej files into a diff-mode buffer. Users could use
+;; the diff-mode commands to visit the erstwhile context, etc.
 
 (require 'cl)
 
