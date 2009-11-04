@@ -252,7 +252,6 @@ the sort returned by mq-parse-conditions."
 
 ;;; Queue Mode, for editing series files.
 
-
 ;; Buffer-local variables.
 (defvar mq-status-filename nil
   "Name of the `status' file for this series buffer.")
@@ -267,6 +266,13 @@ The older pushed patches appear earlier in the list.")
 (defvar mq-guards nil
   "The selected guards for this series buffer's queue.
 This is a list of symbols named after the guards.")
+
+(defvar mq-font-lock-keywords nil
+  "A list of computed regular expressions for font-lock mode to highlight.
+These include selected guards, applied patches, and so on.
+The value of this variable changes as the user pushes and pops patches,
+changes the set of selected guards, and so forth.  We abuse font-lock mode
+a little bit to make this work.")
 
 (defun mq-compute-font-lock ()
   "Compute the current buffer's font lock keywords, based on status and guards."
@@ -285,7 +291,9 @@ This is a list of symbols named after the guards.")
               (push `(,negative-regexp . 'mq-condition-negative-selected)
                     keywords)))
           mq-guards)
-    (setq font-lock-keywords (nreverse keywords))
+    (setq mq-font-lock-keywords (nreverse keywords))
+    ;; Tell font-lock mode to recompute its regexps.  This is kind of a kludge. 
+    (set (make-local-variable 'font-lock-set-defaults) nil)
     (font-lock-fontify-buffer)))
 
 (defun mq-refresh-status-and-guards ()
@@ -341,7 +349,6 @@ Here is a complete list of the bindings available in Queue Mode:
   (use-local-map mq-queue-mode-map)
   (if (string-match "^\\(.*/\\).hg/patches/series" buffer-file-name)
       (setq default-directory (match-string 1 buffer-file-name)))
-  (run-mode-hooks 'mq-queue-mode-hook)
   
   (set (make-local-variable 'mq-status-filename)
        (expand-file-name ".hg/patches/status"))
@@ -349,8 +356,11 @@ Here is a complete list of the bindings available in Queue Mode:
        (expand-file-name ".hg/patches/guards"))
   (make-local-variable 'mq-status)
   (make-local-variable 'mq-guards)
+  (make-local-variable 'mq-font-lock-keywords)
+  (setq font-lock-defaults '(mq-font-lock-keywords))
+  (mq-refresh-status-and-guards)
 
-  (mq-refresh-status-and-guards))
+  (run-mode-hooks 'mq-queue-mode-hook))
 
 (defalias 'queue-mode 'mq-queue-mode)
 
