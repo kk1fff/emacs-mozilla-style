@@ -80,6 +80,8 @@
 ;; Ideas
 ;; =====
 ;;
+;; We should refresh the patch buffer after a qrefresh.
+;;
 ;; When pushing a patch produces a conflict, it would be nice to
 ;; gather up the .rej files into a diff-mode buffer. Users could use
 ;; the diff-mode commands to visit the erstwhile context, etc.
