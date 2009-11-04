@@ -57,7 +57,9 @@
 ;;   (require 'mercurial-queues)
 ;;   (add-to-list 'auto-mode-alist '(".hg/patches/series$" . mq-queue-mode))
 ;;
-;; With that, the following commands are available:
+;; Usage
+;; =====
+;; With this package loaded, the following commands are available:
 ;;
 ;;   C-x q n --- Apply the next patch in the series (as by 'hg qpush').
 ;;   C-x q p --- Un-apply the last applied patch (as by 'hg qpop').
@@ -310,7 +312,19 @@ The following commands are available in all buffers:
                 a Queue Mode buffer.
   \\[mq-visit-series]	As above, but visit the series file in another window.
 
-Queue mode provides special commands for editing series files:
+Visiting a queue series file in Queue Mode provides highlighting
+showing the current state of the queue, and special commands for
+editing series files.
+
+- Names of applied patches appear in bold (the `mq-applied-patch' face).
+
+- Positive guard conditions (`#+foo') whose guards are selected
+  appear in green (the `mq-condition-positive-selected' face).
+
+- Negative guard conditions (`#-foo') whose guards are selected
+  appear in red (the `mq-condition-negative-selected' face).
+
+The following commands are available in the series file:
 \\<mq-queue-mode-map>
   \\[mq-go-to-patch]	Push or pop patches as necessary to make the patch on the
 		current line the top patch.
@@ -409,26 +423,46 @@ current mercurial tree, if the visited file seems to have changed."
 
 ;;; Global commands, available in all files.
 
+(defun mq-push-pop-command (command force)
+  "Subroutine for Mercurial Queues push/pop commands.
+Check that the current buffer is visiting a file to which some
+queue applies; run the command `hg COMMAND'; and refresh Emacs's
+state (buffer contents, series file markup).
+If FORCE is non-nil, pass the `--force' flag to command as well."
+  (mq-check-for-queue)
+  (when force (setq command (concat command " --force")))
+  (mq-shell-command command)
+  (mq-refresh))
+
 (defun mq-qpush ()
   "Apply the next patch in the Mercurial queue for the current buffer."
   (interactive)
-  (mq-check-for-queue)
-  (mq-shell-command "hg qpush")
-  (mq-refresh))
+  (mq-push-pop-command "hg qpush" nil))
 
-(defun mq-qpop ()
-  "Un-apply the last applied patch in the Mercurial queue for the current buffer."
+(defun mq-qpush-all ()
+  "Apply all patches in the Mercurial queue for the current buffer."
   (interactive)
-  (mq-check-for-queue)
-  (mq-shell-command "hg qpop")
-  (mq-refresh))
+  (mq-push-pop-command "hg qpush -a" nil))
+
+(defun mq-qpop (force)
+  "Un-apply the last applied patch in the Mercurial queue for the current buffer.
+With a prefix argument, pass the '--force' flag, to pop even if there are
+local changes."
+  (interactive "P")
+  (mq-push-pop-command "hg qpop" force))
+
+(defun mq-qpop-all (force)
+  "Un-apply all patches in the Mercurial queue for the current buffer.
+With a prefix argument, pass the '--force' flag, to pop even if there are
+local changes."
+  (interactive "P")
+  (mq-push-pop-command "hg qpop -a" force))
 
 (defun mq-qrefresh ()
   "Incorporate changes made to working files into the top Mercurial queue patch."
   (interactive)
   (mq-check-for-queue)
-  (mq-shell-command "hg qrefresh")
-  (mq-refresh))
+  (mq-shell-command "hg qrefresh"))
 
 (defun mq-visit-series ()
   "Visit the current buffer's series file."
@@ -453,6 +487,8 @@ current mercurial tree, if the visited file seems to have changed."
     (define-key map "p" 'mq-qpop)
     (define-key map "r" 'mq-qrefresh)
     (define-key map "s" 'mq-visit-series)
+    (define-key map "<" 'mq-qpop-all)
+    (define-key map ">" 'mq-qpush-all)
     map))
 
 (defvar mq-global-other-window-map
