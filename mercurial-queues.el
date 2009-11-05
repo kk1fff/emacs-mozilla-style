@@ -124,7 +124,7 @@ directory is itself a root.  So we do that."
       (error "Selected buffer has no default directory"))
     ;; If dir is ROOT/.hg/patches, return ROOT regardless of whether
     ;; the patches directory is itself an hg repo.
-    (if (string-match "\\`\\(.*/\\).hg/patches/\\'" dir)
+    (if (string-match "\\`\\(.*/\\)\\.hg/patches/\\'" dir)
         (match-string 1 dir)
       (while (not (file-directory-p (expand-file-name ".hg" dir)))
         (let ((parent (file-name-directory (directory-file-name dir))))
@@ -371,7 +371,7 @@ Here is a complete list of the bindings available in Queue Mode:
   (setq major-mode 'mq-queue-mode)
   (setq mode-name "Queue")
   (use-local-map mq-queue-mode-map)
-  (if (string-match "\\`\\(.*/\\).hg/patches/series" buffer-file-name)
+  (if (string-match "\\`\\(.*/\\)\\.hg/patches/series" buffer-file-name)
       (setq default-directory (match-string 1 buffer-file-name)))
   
   (set (make-local-variable 'mq-status-filename)
