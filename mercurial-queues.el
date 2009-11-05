@@ -208,7 +208,7 @@ yields `(t TABLE)', where TABLE maps `foo-bar' to `+', and `baz' and
       (end-of-line)
       (let ((end (point)))
         (beginning-of-line)
-        (while (re-search-forward "#\\([-+]\\)\\([^#[:blank:]]+\\)" end t)
+        (while (re-search-forward "#\\([-+]\\)\\([^#[:space:]]+\\)" end t)
           (let ((state (intern (match-string 1)))
                 (guard (intern (match-string 2))))
             (puthash guard state table)
@@ -264,7 +264,7 @@ guard conditions for enabling the patch. CONDITIONS is a value of
 the sort returned by mq-parse-conditions."
   (save-excursion
     (beginning-of-line)
-    (if (looking-at "\\s-*\\([^#[:blank:]]+\\)")
+    (if (looking-at "[[:blank:]]*\\([^#[:space:]]+\\)")
         (list (match-string 1) (mq-parse-conditions)))))
 
 (defun mq-shell-command (string &rest args)
@@ -441,6 +441,8 @@ current mercurial tree, if the visited file seems to have changed."
          (patch-directory (mq-find-patch-directory root))
          (line (mq-read-series-line))
          (patch (car line)))
+    (unless line
+      (error "no patch name on current line"))
     (find-file (expand-file-name patch patch-directory))))
 
 (defun mq-find-patch-other-window ()
@@ -450,6 +452,8 @@ current mercurial tree, if the visited file seems to have changed."
          (patch-directory (mq-find-patch-directory root))
          (line (mq-read-series-line))
          (patch (car line)))
+    (unless line
+      (error "no patch name on current line"))
     (find-file-other-window (expand-file-name patch patch-directory))))
 
 (defun mq-point-to-top-patch ()
