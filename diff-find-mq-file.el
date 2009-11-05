@@ -11,14 +11,16 @@
 ;;; doesn't even provide any sort of hook for us to tell it how to do
 ;;; the right thing.
 ;;;
-;;; The copy of diff-mode.el in the same directory as this file has
-;;; been patched to consult an "abnormal hook" variable called
-;;; diff-find-file-name-functions for help. This file defines an
-;;; appropriate function for dealing with Mercurial Queue patch files
-;;; and sticks it on that function list.
+;;; The file mozilla-diff-mode.el in the same directory as this file
+;;; is a copy of Emacs 23.1-ish diff-mode.el, patched to consult an
+;;; "abnormal hook" variable called diff-find-file-name-functions to
+;;; help it find files. The present file defines an appropriate
+;;; function for dealing with Mercurial Queue patch files and adds it
+;;; to that function list.
 ;;;
-;;; To use it, place this file (and the patched diff-mode.el) in your
-;;; Emacs load-path, and then put the following in your .emacs file:
+;;; To use it, place this file in your Emacs load-path, copy (or
+;;; symlink) mozilla-diff-mode.el to diff-mode.el, and then put the
+;;; following in your .emacs file:
 ;;;
 ;;;   (require 'diff-find-mq-file)
 
