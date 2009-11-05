@@ -457,12 +457,12 @@ current mercurial tree, if the visited file seems to have changed."
   (goto-char (point-min))
   (when mq-status
     (let ((patch (car mq-status)))
-      (unless (re-search-forward (format "^\\s-*%s\\([#[:blank:]]\\|\\'\\)"
+      (unless (re-search-forward (format "^\\s-*%s\\([#[:space:]]\\|\\'\\)"
                                          (regexp-quote patch))
                                  nil t)
         (error "Couldn't find line in series file for top patch: %s"
                patch))
-      (beginning-of-line))))
+      (goto-char (match-beginning 0)))))
 
 
 ;;; Global commands, available in all files.
