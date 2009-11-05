@@ -759,6 +759,19 @@ If the OLD prefix arg is passed, tell the file NAME of the old file."
 	       (list (if old (match-string 2) (match-string 4))
 		     (if old (match-string 4) (match-string 2)))))))))
 
+(defvar diff-find-file-name-functions ()
+  "A list of functions to call to find the file to which a hunk applies.
+Each function in this list should take one argument, FILENAMES, a
+list of possible filenames extracted from the patch's file
+header. If the function can determine what real file the patch
+should be applied to, the function should return that real file's
+name. Otherwise, it should return nil.
+
+diff-mode's commands use a number of strategies to try find the
+file to which a patch applies. If none succeed, each of the
+functions in this list are tried in turn; if they all return nil,
+diff-mode prompts the user for the filename.")
+
 (defun diff-find-file-name (&optional old noprompt prefix)
   "Return the file corresponding to the current patch.
 Non-nil OLD means that we want the old file.
@@ -804,6 +817,9 @@ PREFIX is only used internally: don't use it."
 	    (save-excursion
 	      (re-search-backward cvs-pcl-cvs-dirchange-re nil t))
 	    (diff-find-file-name old noprompt (match-string 1)))
+       ;; If the user has provided their own functions for finding the
+       ;; name of the patch's target, call them.
+       (run-hook-with-args-until-success 'diff-find-file-name-functions fs)
        ;; if all else fails, ask the user
        (unless noprompt
          (let ((file (read-file-name (format "Use file %s: "
