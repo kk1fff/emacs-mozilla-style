@@ -28,16 +28,17 @@
 ;; http://mercurial.selenic.com/wiki/MqExtension
 ;; http://hgbook.red-bean.com/read/managing-change-with-mercurial-queues.html
 ;;
-;; Briefly, a queue is an ordered series of patches meant to apply to
+;; Briefly, a patch queue is a sequence of patches meant to apply to
 ;; some source tree under Mercurial's control. The 'hg qpush' command
 ;; applies the next patch in the series; 'hg qpop' un-applies the last
 ;; applied patch; and 'hg qrefresh' integrates any changes you've made
-;; to the working files into the top patch. Queues are useful for
-;; maintaining a set of patches you intend to submit for review:
-;; instead of merging others' changes into a queue, one pops the
-;; queue, updates, and then re-pushes, adjusting and refreshing the
-;; patches as appropriate. This way, the patches stay applicable to
-;; the latest sources, ready for review.
+;; to the working files into the top patch.
+;; 
+;; Patch queues are useful for maintaining a set of patches you intend
+;; to submit for review: instead of merging others' changes into your
+;; latest sources, you pop all your patches, update, and then re-push,
+;; adjusting and refreshing the patches as appropriate. This way, the
+;; patches stay applicable to the latest sources, ready for review.
 ;;
 ;; This package provides:
 ;;
@@ -55,7 +56,7 @@
 ;; load-path, and then put the following in your .emacs file:
 ;;
 ;;   (require 'mercurial-queues)
-;;   (add-to-list 'auto-mode-alist '(".hg/patches/series$" . mq-queue-mode))
+;;   (add-to-list 'auto-mode-alist '(".hg/patches/series$" . mq-series-mode))
 ;;
 ;; Usage
 ;; =====
@@ -63,13 +64,14 @@
 ;;
 ;;   C-x q n --- Apply the next patch in the series (as by 'hg qpush').
 ;;   C-x q p --- Un-apply the last applied patch (as by 'hg qpop').
-;;   C-x q r --- Incorporate the current changes to the working files
-;;               into the top patch (as by 'hg qrefresh').
-;;   C-x q s --- Visit the series file in a Queue Mode buffer. Queue
-;;               Mode shows which patches are currently applied, and
-;;               provides commands to jump to a given patch, edit the
-;;               series, and so on. Visit the Queue Mode documentation
-;;               with `C-h m queue-mode RET' for details.
+;;   C-x q r --- Incorporate the current changes to the working files into the
+;;               top patch (as by 'hg qrefresh').
+;;   C-x q s --- Visit the series file in a Series Mode buffer. Series Mode
+;;               shows which patches are currently applied, and provides
+;;               commands to push/pop up to a given patch, visit patches, and
+;;               so on. You can edit the seris with the normal Emacs editing
+;;               commands. Visit the Series Mode documentation with `C-h m
+;;               series-mode RET' for details.
 ;;   C-x 4 q s --- Visit the series file in another window.
 ;;
 ;; This package takes over the global binding of `C-x q' as a prefix
@@ -105,25 +107,26 @@
 
 ;;; Utility functions.
 
-(defun mq-find-hg-root ()
+(defun mq-hg-root-directory ()
   "Return the root of the Mercurial tree containing the currently visited file.
 This is the directory containing the `.hg' subdirectory.
-
-Note that it can be useful for the ROOT/.hg/patches directory
-itself to be a Mercurial root, with its own metadata in
-ROOT/.hg/patches/.hg. Calling this function in such a directory
-should arguably return ROOT/.hg/patches.
-
-However, it doesn't seem very useful to have queues of patches to
-patches (\"metaqueues\"!), and it does seem useful for the global
-series commands --- mq-visit-series, etc. --- to operate using
-ROOT when invoked in ROOT/.hg/patches, regardless of whether that
-directory is itself a root.  So we do that."
+If the current buffer's default directory is `ROOT/.hg/patches',
+then we return `ROOT', even if there is a `ROOT/.hg/patches/.hg'
+directory."
   (let ((dir default-directory))
     (unless dir
       (error "Selected buffer has no default directory"))
-    ;; If dir is ROOT/.hg/patches, return ROOT regardless of whether
-    ;; the patches directory is itself an hg repo.
+
+    ;; It can be useful for the ROOT/.hg/patches directory itself to be a
+    ;; Mercurial root, with its own metadata in ROOT/.hg/patches/.hg. Calling
+    ;; this function in such a directory should arguably return
+    ;; ROOT/.hg/patches.
+    ;; 
+    ;; However, it doesn't seem very useful to have queues of patches to
+    ;; patches (metaqueues!), and it does seem useful for the global series
+    ;; commands --- mq-visit-series, etc. --- to operate using ROOT when
+    ;; invoked in ROOT/.hg/patches, regardless of whether that directory is
+    ;; itself a root. So we do that.
     (if (string-match "\\`\\(.*/\\)\\.hg/patches/\\'" dir)
         (match-string 1 dir)
       (while (not (file-directory-p (expand-file-name ".hg" dir)))
@@ -135,28 +138,32 @@ directory is itself a root.  So we do that."
           (setq dir parent)))
       dir)))
 
-(defun mq-find-patch-directory (root)
+(defun mq-patch-directory-name (root)
   "Return the patch directory for the Mercurial root directory ROOT."
-  (let ((patches (expand-file-name ".hg/patches" root)))
-    (unless (file-directory-p patches)
-      (error "Mercurial tree has no patch queue: %s" root))
-    patches))
+  (expand-file-name ".hg/patches" root))
 
-(defun mq-find-series-file (root)
-  "Return the series filename for the Mercurial root directory ROOT."
-  (let* ((patch-dir (mq-find-patch-directory root))
-         (series (expand-file-name "series" patch-dir)))
-    (unless (file-exists-p series)
-      (error "Patch queue has no 'series' file: %s" patch-dir))
-    series))
+(defun mq-metadata-file-name (root name)
+  "Return the name of the MQ metadata file NAME for the Mercurial tree ROOT."
+  (expand-file-name name (mq-patch-directory-name root)))
+
+(defun mq-series-file-name (root) (mq-metadata-file-name root "series"))
+(defun mq-status-file-name (root) (mq-metadata-file-name root "status"))
+(defun mq-guards-file-name (root) (mq-metadata-file-name root "guards"))
 
 (defun mq-check-for-queue ()
   "Raise an error if the current directory has no associated patch queue."
-  (mq-find-patch-directory (mq-find-hg-root)))
+  (let* ((root (mq-hg-root-directory))
+         (patch-directory (mq-patch-directory-name root))
+         (series-file (mq-series-file-name root)))
+    (unless (file-directory-p patch-directory)
+      (error "Mercurial tree has no patch directory: %s" root))
+    (unless (file-exists-p series-file)
+      (error "Mercurial tree has no series file: %s" root))))
 
-(defun mq-read-status (filename)
-  "Parse the contents of the MQ status file.
-The return value is a list of the applied patches, from last to earliest."
+(defun mq-parse-status-file (filename)
+  "Parse the contents of the MQ status file named FILENAME.
+The return value is a list of the applied patches, from last to earliest.
+If there is no status file, this returns nil."
   (if (file-exists-p filename)
       (with-temp-buffer
         (insert-file-contents filename)
@@ -170,7 +177,7 @@ The return value is a list of the applied patches, from last to earliest."
           patches))
     nil))
 
-(defun mq-read-guards (filename)
+(defun mq-parse-guards-file (filename)
   "Parse the contents of the MQ guards file.
 The return value is a list of the selected guards, as symbols.
 If there is no 'guards' file, return nil."
@@ -188,7 +195,7 @@ If there is no 'guards' file, return nil."
           guards))
     nil))
 
-(defun mq-parse-conditions ()
+(defun mq-parse-guard-conditions ()
   "Parse the current patch's guard conditions.
 This assumes point is on the patch's line in the series file.
 The return value is a list (ANYPOS TABLE), where:
@@ -220,7 +227,7 @@ yields `(t TABLE)', where TABLE maps `foo-bar' to `+', and `baz' and
   "Return true if GUARDS satisfies CONDITIONS.
 GUARDS is a list of the currently selected guards, as interned symbols.
 CONDITIONS is a (ANYPOS . TABLE) list representing a set of guard
-conditions, of the type returned by mq-parse-conditions.
+conditions, of the type returned by mq-parse-guard-conditions.
 
 Mercurial seems to enable a patch if:
 - it has no negative conditions whose guards are selected, and
@@ -238,7 +245,7 @@ Mercurial seems to enable a patch if:
     (and (not found-negative)
          (or (not anypos) found-positive))))
 
-(defun mq-find-condition-guards ()
+(defun mq-all-condition-guards ()
   "Return a list of all guards mentioned in the current buffer's conditions.
 This scans the current buffer, presumed to be a series file, for
 guard conditions, and returns a list of all the guards mentioned,
@@ -254,18 +261,18 @@ as symbols."
                guards)
       guard-list)))
 
-(defun mq-read-series-line ()
+(defun mq-parse-series-line ()
   "Parse the current series file line, returning the patch name and conditions.
 The return value is nil if the current line contains no patch, or 
 
  a list of the form (NAME CONDITIONS) where
 NAME is the name of the patch file, and CONDITIONS represents the
 guard conditions for enabling the patch. CONDITIONS is a value of
-the sort returned by mq-parse-conditions."
+the sort returned by mq-parse-guard-conditions."
   (save-excursion
     (beginning-of-line)
     (if (looking-at "[[:blank:]]*\\([^#[:space:]]+\\)")
-        (list (match-string 1) (mq-parse-conditions)))))
+        (list (match-string 1) (mq-parse-guard-conditions)))))
 
 (defun mq-shell-command (string &rest args)
   "Run the shell command COMMAND, and tell the user we're doing so."
@@ -273,19 +280,47 @@ the sort returned by mq-parse-conditions."
     (message "Running command: %s" command)
     (shell-command command)))
 
+(defun mq-next-patch-name (root)
+  "Return the name of the next patch to be applied, or nil if all are pushed."
+  ;; If calling 'hg qnext' becomes a pain, we could probably emulate
+  ;; this in lisp, as we do have the code to parse series lines and
+  ;; evaluate guard conditions.
+  (let ((output 
+         ;; hg qnext is unhelpful when run in a patches directory with its
+         ;; own .hg subdirectory.
+         (let ((default-directory root))
+           (shell-command-to-string "hg qnext"))))
+
+    ;; Omit any trailing newline.
+    (if (string-equal (substring output -1) "\n")
+        (setq output (substring output 0 -1)))
+    
+    ;; This is not great.
+    (if (string-equal output "all patches applied")
+        nil
+      ;; Check that the output is a filename; otherwise, assume it's
+      ;; an error message.
+      (let ((patch-directory (mq-patch-directory-name root)))
+        (unless (file-exists-p (expand-file-name output patch-directory))
+          (error "hg qnext: %s" output))
+        output))))
+
 
-;;; Queue Mode, for editing series files.
+;;; Series Mode, for editing series files.
 
 ;; Buffer-local variables.
-(defvar mq-status-filename nil
+(defvar mq-patches-directory nil
+  "Name of the patches directory for this series buffer.")
+
+(defvar mq-status-file-name nil
   "Name of the `status' file for this series buffer.")
 
-(defvar mq-guards-filename nil
+(defvar mq-guards-file-name nil
   "Name of the `guards' file for this series buffer.")
 
 (defvar mq-status nil
   "A list of the patches currently applied for this series buffer.
-The older pushed patches appear earlier in the list.")
+More recently pushed patches appear earlier in the list.")
 
 (defvar mq-guards nil
   "The selected guards for this series buffer's queue.
@@ -322,14 +357,14 @@ a little bit to make this work.")
 
 (defun mq-refresh-status-and-guards ()
   "Reread the `status' and `guards' files for the current series buffer."
-  (unless (eq major-mode 'mq-queue-mode)
+  (unless (eq major-mode 'mq-series-mode)
     (error "mq-refresh-status-and-guards should only run in a series buffer"))
-  (setq mq-status (mq-read-status mq-status-filename))
-  (setq mq-guards (mq-read-guards mq-guards-filename))
+  (setq mq-status (mq-parse-status-file mq-status-file-name))
+  (setq mq-guards (mq-parse-guards-file mq-guards-file-name))
   (mq-compute-font-lock))
 
-(defun mq-queue-mode ()
-  "A major mode for working with Mercurial Queue patch series files.
+(defun mq-series-mode ()
+  "A major mode for working with Mercurial Queues patch series files.
 If the buffer visits a series file in the `.hg/patches' directory
 of a Mercurial repository, then the buffer's default directory is
 the top of that repository.
@@ -341,11 +376,11 @@ The following commands are available in all buffers:
   \\[mq-qrefresh]	Incorporate the current changes to the working files
 		into the top patch (as by 'hg qrefresh').
   \\[mq-visit-series]	Visit the series file relevant to the current buffer in
-                a Queue Mode buffer.
+                a Series Mode buffer.
   \\[mq-visit-series]	As above, but visit the series file in another window.
 
-Visiting a queue series file in Queue Mode provides highlighting
-showing the current state of the queue, and special commands for
+Visiting a series file in Series Mode provides highlighting
+showing the current state of the series, and special commands for
 editing series files.
 
 - Names of applied patches appear in bold (the `mq-applied-patch' face).
@@ -357,38 +392,44 @@ editing series files.
   appear in red (the `mq-condition-negative-selected' face).
 
 The following commands are available in the series file:
-\\<mq-queue-mode-map>
+\\<mq-series-mode-map>
   \\[mq-go-to-patch]	Push or pop patches as necessary to make the patch on the
 		current line the top patch.
   \\[mq-find-patch]	Visit the patch file on the current line.
   \\[mq-find-patch-other-window]	Visit the patch file on the current line in another window.
 
-Here is a complete list of the bindings available in Queue Mode:
+Here is a complete list of the bindings available in Series Mode:
 
-\\{mq-queue-mode-map}"
+\\{mq-series-mode-map}"
   (interactive)
   (kill-all-local-variables)
-  (setq major-mode 'mq-queue-mode)
-  (setq mode-name "Queue")
-  (use-local-map mq-queue-mode-map)
+  (setq major-mode 'mq-series-mode)
+  (setq mode-name "Series")
+  (use-local-map mq-series-mode-map)
+
+  ;; The buffer-local variable mq-patches-directory tells us where the
+  ;; series file actually is, but for convenience we set default-directory
+  ;; to the root of the repository.
+  (set (make-local-variable 'mq-patches-directory) default-directory)
   (if (string-match "\\`\\(.*/\\)\\.hg/patches/series" buffer-file-name)
-      (setq default-directory (match-string 1 buffer-file-name)))
-  
-  (set (make-local-variable 'mq-status-filename)
-       (expand-file-name ".hg/patches/status"))
-  (set (make-local-variable 'mq-guards-filename)
-       (expand-file-name ".hg/patches/guards"))
+      (setq default-directory (match-string 1 buffer-file-name))
+    (setq default-directory (mq-hg-root-directory)))
+
+  (set (make-local-variable 'mq-status-file-name)
+       (mq-status-file-name default-directory))
+  (set (make-local-variable 'mq-guards-file-name)
+       (mq-guards-file-name default-directory))
   (make-local-variable 'mq-status)
   (make-local-variable 'mq-guards)
   (make-local-variable 'mq-font-lock-keywords)
   (setq font-lock-defaults '(mq-font-lock-keywords))
   (mq-refresh-status-and-guards)
 
-  (run-mode-hooks 'mq-queue-mode-hook))
+  (run-mode-hooks 'mq-series-mode-hook))
 
-(defalias 'queue-mode 'mq-queue-mode)
+(defalias 'series-mode 'mq-series-mode)
 
-(defvar mq-queue-mode-map
+(defvar mq-series-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" 'mq-go-to-patch)
     (define-key map "\C-c\C-f" 'mq-find-patch)
@@ -412,8 +453,8 @@ Here is a complete list of the bindings available in Queue Mode:
   "Refresh Emacs's state after pushing or popping patches.
 This reverts all unmodified buffers visiting files in the the
 current mercurial tree, if the visited file seems to have changed."
-  (let* ((root (mq-find-hg-root))
-         (series (mq-find-series-file root))
+  (let* ((root (mq-hg-root-directory))
+         (series (mq-series-file-name root))
          (buffer (get-file-buffer series)))
     (if buffer
         (save-excursion
@@ -422,9 +463,9 @@ current mercurial tree, if the visited file seems to have changed."
     (mq-refresh-buffers root)))
 
 (defun mq-go-to-patch ()
-  "Push or pop the queue to get to the patch on the current line."
+  "Make the patch on the current line the top, by pushing or popping as needed."
   (interactive)
-  (let ((line (mq-read-series-line)))
+  (let ((line (mq-parse-series-line)))
     (unless line
       (error "no patch name on current line"))
     (let* ((patch (car line))
@@ -437,9 +478,9 @@ current mercurial tree, if the visited file seems to have changed."
 (defun mq-find-patch ()
   "Visit the patch on the current line."
   (interactive)
-  (let* ((root (mq-find-hg-root))
-         (patch-directory (mq-find-patch-directory root))
-         (line (mq-read-series-line))
+  (let* ((root (mq-hg-root-directory))
+         (patch-directory (mq-patch-directory-name root))
+         (line (mq-parse-series-line))
          (patch (car line)))
     (unless line
       (error "no patch name on current line"))
@@ -448,9 +489,9 @@ current mercurial tree, if the visited file seems to have changed."
 (defun mq-find-patch-other-window ()
   "Visit the patch on the current line in another window."
   (interactive)
-  (let* ((root (mq-find-hg-root))
-         (patch-directory (mq-find-patch-directory root))
-         (line (mq-read-series-line))
+  (let* ((root (mq-hg-root-directory))
+         (patch-directory (mq-patch-directory-name root))
+         (line (mq-parse-series-line))
          (patch (car line)))
     (unless line
       (error "no patch name on current line"))
@@ -483,67 +524,101 @@ If FORCE is non-nil, pass the `--force' flag to command as well."
   (mq-refresh))
 
 (defun mq-qpush ()
-  "Apply the next patch in the Mercurial queue for the current buffer."
+  "Apply the next patch in the current buffer's Mercurial Queues patch series."
   (interactive)
   (mq-push-pop-command "hg qpush" nil))
 
 (defun mq-qpush-all ()
-  "Apply all patches in the Mercurial queue for the current buffer."
+  "Apply all patches in the current buffer's Mercurial Queues patch series."
   (interactive)
   (mq-push-pop-command "hg qpush -a" nil))
 
 (defun mq-qpop (force)
-  "Un-apply the last applied patch in the Mercurial queue for the current buffer.
+  "Un-apply the last applied patch in the current buffer's Mercurial patch series.
 With a prefix argument, pass the '--force' flag, to pop even if there are
 local changes."
   (interactive "P")
   (mq-push-pop-command "hg qpop" force))
 
 (defun mq-qpop-all (force)
-  "Un-apply all patches in the Mercurial queue for the current buffer.
+  "Un-apply all patches in the current buffer's Mercurial Queues patch series.
 With a prefix argument, pass the '--force' flag, to pop even if there are
 local changes."
   (interactive "P")
   (mq-push-pop-command "hg qpop -a" force))
 
 (defun mq-qrefresh ()
-  "Incorporate changes made to working files into the top Mercurial queue patch."
+  "Incorporate uncommitted changes into the top Mercurial Queues patch."
   (interactive)
   (mq-check-for-queue)
   (mq-shell-command "hg qrefresh"))
 
-(defun mq-visit-series ()
-  "Visit the current buffer's series file."
+(defun mq-visit-series (&optional finder)
+  "Visit the series file for the current buffer's Mercurial Queues patch series.
+If FINDER is non-nil, use that as the function to use to visit the file."
   (interactive)
-  (let* ((root (mq-find-hg-root))
-         (series (mq-find-series-file root)))
-    (find-file series)
+  (let* ((root (mq-hg-root-directory))
+         (series (mq-series-file-name root)))
+    (funcall (or finder 'find-file) series)
     (mq-point-to-top-patch)))
 
 (defun mq-visit-series-other-window ()
-  "Visit the current buffer's series file in another window."
+  "Visit the Mercurial Queues series file for current buffer in another window."
   (interactive)
-  (let* ((root (mq-find-hg-root))
-         (series (mq-find-series-file root)))
-    (find-file-other-window series)
-    (mq-point-to-top-patch)))
+  (mq-visit-series 'find-file-other-window))
+
+(defun mq-visit-top-patch (&optional finder)
+  "Visit the top applied patch in the current buffer's Mercurial Queue.
+If FINDER is non-nil, use that as the function to visit the file."
+  (interactive)
+  (mq-check-for-queue)
+  (let* ((root (mq-hg-root-directory))
+         (patch-directory (mq-patch-directory-name root))
+         (status (mq-parse-status-file (mq-status-file-name root))))
+    (unless status
+      (error "No patches currently applied in this buffer's source tree."))
+    (funcall (or finder 'find-file)
+             (expand-file-name (car status) patch-directory))))
+
+(defun mq-visit-top-patch-other-window ()
+  "Visit the top applied patch for the current buffer in another window."
+  (interactive)
+  (mq-visit-top-patch 'find-file-other-window))
+
+(defun mq-show-top-next ()
+  "Show the names of the top and next patch for this buffer's Mercurial Queue."
+  (interactive)
+  (mq-check-for-queue)
+  (let* ((root (mq-hg-root-directory))
+         (status (mq-parse-status-file (mq-status-file-name root)))
+         (next (mq-next-patch-name root)))
+    (if (not (or status next))
+        (message "no patches applied or enabled")
+      (let ((top-message (if status (format "top: %s" (car status))
+                           "no patches applied"))
+            (next-message (if next (format "next: %s" next)
+                            "all enabled patches applied")))
+        (message "%s; %s" top-message next-message)))))
 
 
 ;;; Global key bindings.
 
 (defvar mq-global-map
-  (let ((map (make-keymap "Mercurial Patch Queue")))
+  (let ((map (make-keymap)))
     (define-key map "n" 'mq-qpush)
     (define-key map "p" 'mq-qpop)
     (define-key map "r" 'mq-qrefresh)
     (define-key map "s" 'mq-visit-series)
+    (define-key map "t" 'mq-visit-top-patch)
+    (define-key map "=" 'mq-show-top-next)
     (define-key map "<" 'mq-qpop-all)
     (define-key map ">" 'mq-qpush-all)
     map))
 
 (defvar mq-global-other-window-map
-  (let ((map (make-keymap "Mercurial Patch Queue (other window)")))
+  (let ((map (make-keymap)))
     (define-key map "s" 'mq-visit-series-other-window)
+    (define-key map "t" 'mq-visit-top-patch-other-window)
     map))
 
 (global-set-key "\C-xq" mq-global-map)
