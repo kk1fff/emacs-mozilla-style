@@ -502,17 +502,19 @@ current mercurial tree, if the visited file seems to have changed."
       (error "no patch name on current line"))
     (find-file-other-window (expand-file-name patch patch-directory))))
 
-(defun mq-point-to-top-patch ()
-  "Move point to the series buffer line for the top applied patch."
+(defun mq-point-to-patch (patch)
+  "Move point to the series buffer line for PATCH.
+If PATCH is nil, move to the top patch.
+If there is no applied patch, move point to the top of the buffer"
   (goto-char (point-min))
-  (when mq-status
-    (let ((patch (car mq-status)))
-      (unless (re-search-forward (format "^\\s-*%s\\([#[:space:]]\\|\\'\\)"
-                                         (regexp-quote patch))
-                                 nil t)
-        (error "Couldn't find line in series file for top patch: %s"
-               patch))
-      (goto-char (match-beginning 0)))))
+  (unless patch (setq patch (car mq-status)))
+  (when patch
+    (unless (re-search-forward (format "^\\s-*%s\\([#[:space:]]\\|\\'\\)"
+                                       (regexp-quote patch))
+                               nil t)
+      (error "Couldn't find line in series file for top patch: %s"
+             patch))
+    (goto-char (match-beginning 0)))))
 
 
 ;;; Global commands, available in all files.
@@ -563,9 +565,11 @@ local changes."
 If FINDER is non-nil, use that as the function to use to visit the file."
   (interactive)
   (let* ((root (mq-hg-root-directory))
-         (series (mq-series-file-name root)))
+         (series (mq-series-file-name root))
+         (move-to (if (string-match ".*\\.hg/patches/\\'" default-directory)
+                      (file-name-nondirectory buffer-file-name))))
     (funcall (or finder 'find-file) series)
-    (mq-point-to-top-patch)))
+    (mq-point-to-patch move-to)))
 
 (defun mq-visit-series-other-window ()
   "Visit the Mercurial Queues series file for current buffer in another window."
