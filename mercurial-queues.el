@@ -470,12 +470,15 @@ current mercurial tree, if the visited file seems to have changed."
   (let ((line (mq-parse-series-line)))
     (unless line
       (error "no patch name on current line"))
-    (let* ((patch (car line))
-           ;; If the patch is currently applied, we assume we should pop.
-           ;; Otherwise, we assume we should push.
-           (operation (if (member patch mq-status) "qpop" "qpush")))
-      (mq-shell-command "hg %s '%s'" operation patch)
-      (mq-refresh))))
+    (let ((patch (car line)))
+      ;; If the patch is already the top one, say something helpful.
+      (if (equal patch (car mq-status))
+          (message "patch is already the top patch: %s" patch)
+        ;; If the patch is currently applied, we assume we should pop.
+        ;; Otherwise, we assume we should push.
+        (let ((operation (if (member patch mq-status) "qpop" "qpush")))
+          (mq-shell-command "hg %s '%s'" operation patch)
+          (mq-refresh))))))
 
 (defun mq-find-patch ()
   "Visit the patch on the current line."
