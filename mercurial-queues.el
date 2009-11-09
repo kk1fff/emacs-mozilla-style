@@ -82,7 +82,9 @@
 ;; Ideas
 ;; =====
 ;;
-;; We should refresh the patch buffer after a qrefresh.
+;; We should refresh any buffer visiting the top patch after a qrefresh.
+;;
+;; font-locking highlighting for series file comments.
 ;;
 ;; When pushing a patch produces a conflict, it would be nice to
 ;; gather up the .rej files into a diff-mode buffer. Users could use
