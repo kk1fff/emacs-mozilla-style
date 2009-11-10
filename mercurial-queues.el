@@ -82,6 +82,8 @@
 ;; Ideas
 ;; =====
 ;;
+;; qnew, with prefix arg qnew -f
+;;
 ;; font-locking highlighting for series file comments.
 ;;
 ;; When pushing a patch produces a conflict, it would be nice to
@@ -141,6 +143,11 @@ directory."
 (defun mq-patch-directory-name (root)
   "Return the patch directory for the Mercurial root directory ROOT."
   (expand-file-name ".hg/patches" root))
+
+(defun mq-root-for-patch-directory (dir)
+  "If DIR is a patch directory, return its root.  Otherwise, return nil."
+  (when (string-match "\\`\\(.*/\\)\\.hg/patches/\\'" dir)
+    (match-string 1 dir)))
 
 (defun mq-metadata-file-name (root name)
   "Return the name of the MQ metadata file NAME for the Mercurial tree ROOT."
@@ -275,10 +282,16 @@ the sort returned by mq-parse-guard-conditions."
         (list (match-string 1) (mq-parse-guard-conditions)))))
 
 (defun mq-shell-command (string &rest args)
-  "Run the shell command COMMAND, and tell the user we're doing so."
+  "Display and run the shell command COMMAND, in an appropriate directory.
+If the current default-directory is `ROOT/.hg/patches', then run
+the command with ROOT as its default directory. Otherwise, use
+default-directory unchanged."
   (let ((command (apply (function format) string args)))
     (message "Running command: %s" command)
-    (shell-command command)))
+    (let ((default-directory
+            (or (mq-root-for-patch-directory default-directory)
+                default-directory)))
+      (shell-command command))))
 
 (defun mq-top-patch-name (root)
   "Return the name of the top patch, or nil if none are pushed."
@@ -411,13 +424,13 @@ Here is a complete list of the bindings available in Series Mode:
   (setq mode-name "Series")
   (use-local-map mq-series-mode-map)
 
-  ;; The buffer-local variable mq-patches-directory tells us where the
-  ;; series file actually is, but for convenience we set default-directory
-  ;; to the root of the repository.
+  ;; The buffer-local variable mq-patches-directory is the directory
+  ;; actually containing the series file, but for convenience we set
+  ;; default-directory to the root of the repository.
   (set (make-local-variable 'mq-patches-directory) default-directory)
-  (if (string-match "\\`\\(.*/\\)\\.hg/patches/series" buffer-file-name)
-      (setq default-directory (match-string 1 buffer-file-name))
-    (setq default-directory (mq-hg-root-directory)))
+  (setq default-directory
+        (or (mq-root-for-patch-directory default-directory)
+            (mq-hg-root-directory)))
 
   (set (make-local-variable 'mq-status-file-name)
        (mq-status-file-name default-directory))
