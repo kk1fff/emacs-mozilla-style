@@ -82,8 +82,6 @@
 ;; Ideas
 ;; =====
 ;;
-;; We should refresh any buffer visiting the top patch after a qrefresh.
-;;
 ;; font-locking highlighting for series file comments.
 ;;
 ;; When pushing a patch produces a conflict, it would be nice to
@@ -281,6 +279,10 @@ the sort returned by mq-parse-guard-conditions."
   (let ((command (apply (function format) string args)))
     (message "Running command: %s" command)
     (shell-command command)))
+
+(defun mq-top-patch-name (root)
+  "Return the name of the top patch, or nil if none are pushed."
+  (car (mq-parse-status-file (mq-status-file-name root))))
 
 (defun mq-next-patch-name (root)
   "Return the name of the next patch to be applied, or nil if all are pushed."
@@ -514,7 +516,7 @@ If there is no applied patch, move point to the top of the buffer"
                                nil t)
       (error "Couldn't find line in series file for top patch: %s"
              patch))
-    (goto-char (match-beginning 0)))))
+    (goto-char (match-beginning 0))))
 
 
 ;;; Global commands, available in all files.
@@ -558,7 +560,18 @@ local changes."
   "Incorporate uncommitted changes into the top Mercurial Queues patch."
   (interactive)
   (mq-check-for-queue)
-  (mq-shell-command "hg qrefresh"))
+  (mq-shell-command "hg qrefresh")
+  ;; If we have a buffer visiting that patch, try to refresh it.
+  (let* ((root (mq-hg-root-directory))
+         (patch-directory (mq-patch-directory-name root))
+         (top (expand-file-name (mq-top-patch-name root) patch-directory))
+         (buffer (get-file-buffer top)))
+    (if buffer
+        (save-excursion
+          (set-buffer buffer)
+          (if (and (not (buffer-modified-p))
+                   (not (verify-visited-file-modtime (current-buffer))))
+              (revert-buffer t t))))))        
 
 (defun mq-visit-series (&optional finder)
   "Visit the series file for the current buffer's Mercurial Queues patch series.
@@ -599,11 +612,11 @@ If FINDER is non-nil, use that as the function to visit the file."
   (interactive)
   (mq-check-for-queue)
   (let* ((root (mq-hg-root-directory))
-         (status (mq-parse-status-file (mq-status-file-name root)))
+         (top (mq-top-patch-name root))
          (next (mq-next-patch-name root)))
-    (if (not (or status next))
+    (if (not (or top next))
         (message "no patches applied or enabled")
-      (let ((top-message (if status (format "top: %s" (car status))
+      (let ((top-message (if top (format "top: %s" top)
                            "no patches applied"))
             (next-message (if next (format "next: %s" next)
                             "all enabled patches applied")))
