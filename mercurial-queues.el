@@ -82,7 +82,7 @@
 ;; Ideas
 ;; =====
 ;;
-;; qnew, with prefix arg qnew -f
+;; qfold
 ;;
 ;; font-locking highlighting for series file comments.
 ;;
@@ -118,6 +118,7 @@ directory."
   (let ((dir default-directory))
     (unless dir
       (error "Selected buffer has no default directory"))
+    (setq dir (expand-file-name dir))
 
     ;; It can be useful for the ROOT/.hg/patches directory itself to be a
     ;; Mercurial root, with its own metadata in ROOT/.hg/patches/.hg. Calling
@@ -142,7 +143,7 @@ directory."
 
 (defun mq-patch-directory-name (root)
   "Return the patch directory for the Mercurial root directory ROOT."
-  (expand-file-name ".hg/patches" root))
+  (file-name-as-directory (expand-file-name ".hg/patches" root)))
 
 (defun mq-root-for-patch-directory (dir)
   "If DIR is a patch directory, return its root.  Otherwise, return nil."
@@ -454,7 +455,9 @@ Here is a complete list of the bindings available in Series Mode:
     map))
 
 (defun mq-refresh-buffers (root)
-  "Revert all unmodified buffers visiting changed files in ROOT."
+  "Revert all unmodified buffers visiting changed files in ROOT.
+Note that this also updates the contents of the `series' buffer, if it has
+changed."
   (let ((root-regexp (concat "\\`" (regexp-quote root))))
     (loop for buffer in (buffer-list)
           do (save-excursion
@@ -470,14 +473,17 @@ Here is a complete list of the bindings available in Series Mode:
   "Refresh Emacs's state after pushing or popping patches.
 This reverts all unmodified buffers visiting files in the the
 current mercurial tree, if the visited file seems to have changed."
-  (let* ((root (mq-hg-root-directory))
-         (series (mq-series-file-name root))
-         (buffer (get-file-buffer series)))
-    (if buffer
+  (let ((root (mq-hg-root-directory)))
+    (mq-refresh-buffers root)
+    ;; The above will catch changes to the status file. But if the
+    ;; operation changed the status or guard files without changing
+    ;; the series file, we need to catch those explicitly.
+    (let* ((series (mq-series-file-name root))
+           (buffer (get-file-buffer series)))
+      (when buffer
         (save-excursion
           (set-buffer buffer)
-          (mq-refresh-status-and-guards)))
-    (mq-refresh-buffers root)))
+          (mq-refresh-status-and-guards))))))
 
 (defun mq-go-to-patch ()
   "Make the patch on the current line the top, by pushing or popping as needed."
@@ -586,6 +592,32 @@ local changes."
                    (not (verify-visited-file-modtime (current-buffer))))
               (revert-buffer t t))))))        
 
+(defun mq-qnew (name &optional force)
+  "Insert a new patch into the current Mercurial Queues patch series.
+The new patch follows the current top in the series, and is initially empty.
+Normally, there must not be any uncommitted changes in the
+working directory. With a prefix argument, create a new patch
+anyway, incorporating all such changes."
+  (interactive
+   (let* ((root (mq-hg-root-directory))
+          (patch-directory (mq-patch-directory-name root)))
+     (list (read-file-name "New patch name: " patch-directory "" nil
+                           ".patch")
+           current-prefix-arg)))
+  (cond
+   ((string-equal name "")
+    (message "No name for new patch provided; no new patch created"))
+   ((file-exists-p name)
+    (error "Patch already exists: %s" name))
+   (t
+    (let* ((root (mq-hg-root-directory))
+           (patch-directory (mq-patch-directory-name root))
+           (relative-name (file-relative-name name patch-directory)))
+      (mq-shell-command "hg qnew%s '%s'"
+                        (if force " -f" "")
+                        relative-name)
+      (mq-refresh)))))
+
 (defun mq-visit-series (&optional finder)
   "Visit the series file for the current buffer's Mercurial Queues patch series.
 If FINDER is non-nil, use that as the function to use to visit the file."
@@ -645,6 +677,7 @@ If FINDER is non-nil, use that as the function to visit the file."
     (define-key map "r" 'mq-qrefresh)
     (define-key map "s" 'mq-visit-series)
     (define-key map "t" 'mq-visit-top-patch)
+    (define-key map "o" 'mq-qnew)
     (define-key map "=" 'mq-show-top-next)
     (define-key map "<" 'mq-qpop-all)
     (define-key map ">" 'mq-qpush-all)
