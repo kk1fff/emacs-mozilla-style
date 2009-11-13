@@ -390,12 +390,18 @@ the top of that repository.
 The following commands are available in all buffers:
 
   \\[mq-qpush]	Apply the next patch in the series (as by 'hg qpush').
-  \\[mq-qpop]	Apply the next patch in the series (as by 'hg qpop').
+  \\[mq-qpop]	Un-apply the top patch in the series (as by 'hg qpop').
   \\[mq-qrefresh]	Incorporate the current changes to the working files
 		into the top patch (as by 'hg qrefresh').
+  \\[mq-visit-top-patch]	Visit the top patch file.
+  \\[mq-visit-top-patch-other-window]	Visit the top patch file in another window.
   \\[mq-visit-series]	Visit the series file relevant to the current buffer in
                 a Series Mode buffer.
-  \\[mq-visit-series]	As above, but visit the series file in another window.
+  \\[mq-visit-series-other-window]	As above, but visit the series file in another window.
+  \\[mq-qnew]	Insert a new patch in the series, on top of the current patch.
+  \\[mq-show-top-next]	Show the names of the top and next patches.
+  \\[mq-qpop-all]	Un-apply all patches (as by 'hg qpop -a').
+  \\[mq-qpush-all]	Apply all patches in the series (as by 'hg qpush -a').
 
 Visiting a series file in Series Mode provides highlighting
 showing the current state of the series, and special commands for
