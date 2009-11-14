@@ -82,7 +82,7 @@
 ;; Ideas
 ;; =====
 ;;
-;; qfold
+;; qdelete
 ;;
 ;; font-locking highlighting for series file comments.
 ;;
@@ -323,6 +323,43 @@ default-directory unchanged."
           (error "hg qnext: %s" output))
         output))))
 
+(defun mq-suggest-unapplied-patch (root)
+  "Choose a helpful default for prompts for the name of an unapplied patch.
+ROOT is the repository root of whose series the patch should be
+an unapplied member. We return the patch's file name relative to
+the patches directory.
+If the current buffer is a series-mode buffer, return the patch
+on the line containing point, if that patch is unapplied.
+If the current buffer is a diff-mode buffer visiting an unapplied
+patch in the patches directory, return its name.
+Otherwise, return nil."
+  ;; I thought it would be nice to return the first unapplied patch if
+  ;; neither of the above yield results, but 1) that might be slow,
+  ;; and 2) if there isn't a likely choice, I'd rather not put
+  ;; something in the minibuffer that people have to delete.
+  (let (status
+        (patch
+         (or 
+          ;; If we're in a series-mode buffer, try to parse the
+          ;; current line.
+          (and (eq major-mode 'mq-series-mode)
+               (let ((line (mq-parse-series-line)))
+                 ;; Use the status data we've already collected.
+                 (setq status mq-status)
+                 (car line)))
+          ;; If we're in a diff-mode buffer, visiting a patch in our
+          ;; patches directory, then use the buffer name.
+          (and (eq major-mode 'diff-mode)
+               (let ((patch-directory (mq-patch-directory-name root)))
+                 (when (string-equal patch-directory
+                                     (file-name-directory buffer-file-name))
+                   (file-relative-name buffer-file-name
+                                       patch-directory)))))))
+    (unless status
+      (setq status (mq-parse-status-file (mq-status-file-name root))))
+    (unless (member patch status)
+      patch)))
+
 
 ;;; Series Mode, for editing series files.
 
@@ -421,6 +458,7 @@ The following commands are available in the series file:
 		current line the top patch.
   \\[mq-find-patch]	Visit the patch file on the current line.
   \\[mq-find-patch-other-window]	Visit the patch file on the current line in another window.
+  \\[mq-qfold]	Incorporate the patch on the current line into the top patch.
 
 Here is a complete list of the bindings available in Series Mode:
 
@@ -457,6 +495,7 @@ Here is a complete list of the bindings available in Series Mode:
   (let ((map (make-sparse-keymap)))
     (define-key map "\C-c\C-c" 'mq-go-to-patch)
     (define-key map "\C-c\C-f" 'mq-find-patch)
+    (define-key map "\C-c\C-i" 'mq-qfold)
     (define-key map "\C-c4\C-f" 'mq-find-patch-other-window)
     map))
 
@@ -673,6 +712,21 @@ If FINDER is non-nil, use that as the function to visit the file."
                             "all enabled patches applied")))
         (message "%s; %s" top-message next-message)))))
 
+(defun mq-qfold (patch delete)
+  "Incorporate an unapplied patch into the top patch, as by `hg qfold'.
+With a prefix argument, delete the incorporated patch."
+  (interactive
+   (let* ((root (mq-hg-root-directory))
+          (patch-directory (mq-patch-directory-name root))
+          (suggested (mq-suggest-unapplied-patch root)))
+     (list (read-file-name "Fold patch into top: " patch-directory suggested t
+                           suggested)
+           current-prefix-arg)))
+  (mq-shell-command "hg qfold%s '%s'"
+                    (if delete "" " --keep")
+                    patch)
+  (mq-refresh))
+
 
 ;;; Global key bindings.
 
@@ -687,6 +741,7 @@ If FINDER is non-nil, use that as the function to visit the file."
     (define-key map "=" 'mq-show-top-next)
     (define-key map "<" 'mq-qpop-all)
     (define-key map ">" 'mq-qpush-all)
+    (define-key map "i" 'mq-qfold)
     map))
 
 (defvar mq-global-other-window-map
