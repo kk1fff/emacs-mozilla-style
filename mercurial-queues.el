@@ -624,6 +624,7 @@ local changes."
   "Incorporate uncommitted changes into the top Mercurial Queues patch."
   (interactive)
   (mq-check-for-queue)
+  (save-some-buffers)
   (mq-shell-command "hg qrefresh")
   ;; If we have a buffer visiting that patch, try to refresh it.
   (let* ((root (mq-hg-root-directory))
@@ -719,8 +720,10 @@ With a prefix argument, delete the incorporated patch."
    (let* ((root (mq-hg-root-directory))
           (patch-directory (mq-patch-directory-name root))
           (suggested (mq-suggest-unapplied-patch root)))
-     (list (read-file-name "Fold patch into top: " patch-directory suggested t
-                           suggested)
+     (list (let ((default-directory patch-directory))
+             (file-relative-name
+              (read-file-name "Fold patch into top: " nil suggested t
+                              suggested)))
            current-prefix-arg)))
   (mq-shell-command "hg qfold%s '%s'"
                     (if delete "" " --keep")
