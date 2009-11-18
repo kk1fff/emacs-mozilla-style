@@ -350,11 +350,11 @@ Otherwise, return nil."
           ;; If we're in a diff-mode buffer, visiting a patch in our
           ;; patches directory, then use the buffer name.
           (and (eq major-mode 'diff-mode)
+               buffer-file-name
                (let ((patch-directory (mq-patch-directory-name root)))
                  (when (string-equal patch-directory
                                      (file-name-directory buffer-file-name))
-                   (file-relative-name buffer-file-name
-                                       patch-directory)))))))
+                   (file-name-nondirectory buffer-file-name)))))))
     (unless status
       (setq status (mq-parse-status-file (mq-status-file-name root))))
     (unless (member patch status)
@@ -671,8 +671,10 @@ If FINDER is non-nil, use that as the function to use to visit the file."
   (interactive)
   (let* ((root (mq-hg-root-directory))
          (series (mq-series-file-name root))
-         (move-to (if (string-match ".*\\.hg/patches/\\'" default-directory)
-                      (file-name-nondirectory buffer-file-name))))
+         (move-to
+          (if (and buffer-file-name
+                   (string-match ".*\\.hg/patches/\\'" default-directory))
+              (file-name-nondirectory buffer-file-name))))
     (funcall (or finder 'find-file) series)
     (mq-point-to-patch move-to)))
 
