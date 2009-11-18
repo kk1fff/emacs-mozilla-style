@@ -592,6 +592,7 @@ queue applies; run the command `hg COMMAND'; and refresh Emacs's
 state (buffer contents, series file markup).
 If FORCE is non-nil, pass the `--force' flag to command as well."
   (mq-check-for-queue)
+  (save-some-buffers)
   (when force (setq command (concat command " --force")))
   (mq-shell-command command)
   (mq-refresh))
