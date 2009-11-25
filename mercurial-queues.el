@@ -570,17 +570,21 @@ current mercurial tree, if the visited file seems to have changed."
 
 (defun mq-point-to-patch (patch)
   "Move point to the series buffer line for PATCH.
-If PATCH is nil, move to the top patch.
+If PATCH is nil, or there is no such patch, move to the top patch.
 If there is no applied patch, move point to the top of the buffer"
   (goto-char (point-min))
-  (unless patch (setq patch (car mq-status)))
-  (when patch
-    (unless (re-search-forward (format "^\\s-*%s\\([#[:space:]]\\|\\'\\)"
-                                       (regexp-quote patch))
-                               nil t)
-      (error "Couldn't find line in series file for top patch: %s"
-             patch))
-    (goto-char (match-beginning 0))))
+  (cond
+   ((and patch
+         (re-search-forward (format "^\\s-*%s\\([#[:space:]]\\|\\'\\)"
+                                    (regexp-quote patch))
+                            nil t))
+    (goto-char (match-beginning 0)))
+   ((and mq-status
+         (re-search-forward (format "^\\s-*%s\\([#[:space:]]\\|\\'\\)"
+                                    (regexp-quote (car mq-status)))
+                            nil t))
+    (goto-char (match-beginning 0)))
+   (t (goto-char (point-min)))))
 
 
 ;;; Global commands, available in all files.
