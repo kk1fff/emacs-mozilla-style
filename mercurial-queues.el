@@ -533,6 +533,7 @@ current mercurial tree, if the visited file seems to have changed."
 (defun mq-go-to-patch ()
   "Make the patch on the current line the top, by pushing or popping as needed."
   (interactive)
+  (save-some-buffers)
   (let ((line (mq-parse-series-line)))
     (unless line
       (error "no patch name on current line"))
