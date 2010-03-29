@@ -83,6 +83,7 @@
 ;; =====
 ;;
 ;; qdelete
+;; mark pushed patches as read-only
 ;;
 ;; font-locking highlighting for series file comments.
 ;;
