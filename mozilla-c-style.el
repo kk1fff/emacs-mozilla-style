@@ -32,7 +32,8 @@
                         (statement-block-intro mozilla-lineup-case-block-intro
                                                +)
                         (statement-cont mozilla-lineup-return-cont
-                                        +)))))
+                                        +)
+                        (innamespace . 0)))))
 
 (c-add-style "Mozilla" mozilla-c-style)
 
