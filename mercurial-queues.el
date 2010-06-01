@@ -636,14 +636,17 @@ local changes."
   ;; If we have a buffer visiting that patch, try to refresh it.
   (let* ((root (mq-hg-root-directory))
          (patch-directory (mq-patch-directory-name root))
-         (top (expand-file-name (mq-top-patch-name root) patch-directory))
-         (buffer (get-file-buffer top)))
-    (if buffer
-        (save-excursion
-          (set-buffer buffer)
-          (if (and (not (buffer-modified-p))
-                   (not (verify-visited-file-modtime (current-buffer))))
-              (revert-buffer t t))))))        
+         (status (mq-parse-status-file (mq-status-file-name root))))
+    (unless status
+      (error "No patch currently applied; cannot refresh."))
+    (let* ((top (expand-file-name (mq-top-patch-name root) patch-directory))
+           (buffer (get-file-buffer top)))
+      (if buffer
+          (save-excursion
+            (set-buffer buffer)
+            (if (and (not (buffer-modified-p))
+                     (not (verify-visited-file-modtime (current-buffer))))
+                (revert-buffer t t)))))))
 
 (defun mq-qnew (name &optional force)
   "Insert a new patch into the current Mercurial Queues patch series.
