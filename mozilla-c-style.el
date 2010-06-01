@@ -33,7 +33,8 @@
                                                +)
                         (statement-cont mozilla-lineup-return-cont
                                         +)
-                        (innamespace . 0)))))
+                        (innamespace . 0)
+                        (access-label /)))))
 
 (c-add-style "Mozilla" mozilla-c-style)
 
