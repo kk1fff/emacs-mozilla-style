@@ -105,7 +105,9 @@ This just checks for the license block header."
   "If the current buffer seems to contain mozilla code, select Mozilla style.
 This is suitable for inclusion on c-mode-common-hook."
   (if (mozilla-source)
-      (c-set-style "Mozilla")))
+      (progn
+        (setq indent-tabs-mode nil)
+        (c-set-style "Mozilla"))))
 
 (defun mozilla-auto-select-style ()
   "Add 'mozilla-c-mode-style-hook' to c-mode-common-hook."
